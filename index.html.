@@ -1,1 +1,223 @@
-index.html.
+
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>MRF 140 CC - City Ride 3D</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;overflow:hidden;font-family:Arial;background:#87ceeb;touch-action:none}
+#hud{position:fixed;top:10px;left:10px;color:white;background:#111d;padding:12px;border-radius:12px;z-index:2;font-weight:bold}
+#help{font-size:11px;margin-top:6px}
+#controls{position:fixed;bottom:14px;left:0;right:0;display:flex;justify-content:space-between;align-items:end;padding:0 12px;z-index:3;pointer-events:none}
+.group{display:flex;gap:7px;pointer-events:auto}
+button{border:2px solid #ffffff99;background:#171717bb;color:white;border-radius:14px;min-width:53px;height:58px;font-weight:bold;font-size:16px;touch-action:none}
+button:active{background:#d71925}
+#gas,#brake,#wheelie{min-width:60px}
+@media(min-width:800px){button{min-width:68px;height:64px}}
+</style>
+</head>
+<body>
+<div id="hud">
+🏍️ MRF 140 CC 3D
+<div id="speed">Prędkość: 0 km/h</div>
+<div id="police">🚓 Policja: daleko</div>
+<div id="help">WASD / strzałki • Spacja = wheelie</div>
+</div>
+<div id="controls">
+ <div class="group">
+  <button id="left">◀</button><button id="right">▶</button>
+ </div>
+ <div class="group">
+  <button id="brake">HAM.</button><button id="gas">GAZ</button><button id="wheelie">🏍️ WHEELIE</button>
+ </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+(() => {
+if(!window.THREE){document.body.innerHTML="Włącz internet i odśwież stronę, aby załadować grę 3D.";return;}
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x86c9f5);
+scene.fog=new THREE.Fog(0x86c9f5,100,400);
+const camera=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.1,1000);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+renderer.shadowMap.enabled=true;
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xffffff,0x586344,2));
+const sun=new THREE.DirectionalLight(0xffffff,2);
+sun.position.set(-40,80,30);sun.castShadow=true;scene.add(sun);
+
+const mat=(c)=>new THREE.MeshStandardMaterial({color:c,roughness:.8});
+const grass=mat(0x56864b),road=mat(0x33373c),line=mat(0xf4e9bd);
+const black=mat(0x151515),metal=mat(0x999fa5),red=mat(0xd71925);
+const white=mat(0xf4f4f4),blue=mat(0x2456bc);
+
+function box(parent,w,h,d,m,x,y,z){
+ const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);
+ o.position.set(x,y,z);o.castShadow=true;o.receiveShadow=true;parent.add(o);return o;
+}
+function cyl(parent,r1,r2,h,m,x,y,z,rx=0,rz=0){
+ const o=new THREE.Mesh(new THREE.CylinderGeometry(r1,r2,h,12),m);
+ o.position.set(x,y,z);o.rotation.set(rx,0,rz);o.castShadow=true;parent.add(o);return o;
+}
+
+// Świat i ulice
+box(scene,1000,.2,1000,grass,0,-.2,0);
+for(let n=-10;n<=10;n++){
+ box(scene,12,.04,1000,road,n*40,0,0);
+ box(scene,1000,.04,12,road,0,.01,n*40);
+ for(let p=-480;p<480;p+=12){
+  box(scene,.15,.025,4,line,n*40,.04,p);
+  box(scene,4,.025,.15,line,p,.05,n*40);
+ }
+}
+
+// Miasto
+let seed=812;
+function rand(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296}
+const walls=[0xc5b6a1,0x9ba7b3,0xd6d3c8,0xb9856b,0xb7c5ad].map(mat);
+for(let x=-460;x<=460;x+=40){
+ for(let z=-460;z<=460;z+=40){
+  if(rand()<.36)continue;
+  const w=10+rand()*12,d=10+rand()*12,h=8+rand()*35;
+  const bx=x+(rand()-.5)*9,bz=z+(rand()-.5)*9;
+  box(scene,w,h,d,walls[Math.floor(rand()*walls.length)],bx,h/2,bz);
+  for(let yy=3;yy<h-2;yy+=4){
+   for(let xx=-w/2+1;xx<w/2-1;xx+=3){
+    box(scene,1,1.3,.07,mat(0x8fd5eb),bx+xx,yy,bz+d/2+.05);
+   }
+  }
+ }
+}
+
+// Motocykl
+const bike=new THREE.Group();scene.add(bike);
+const frame=new THREE.Group();bike.add(frame);
+const wheels=[];
+function wheel(z){
+ const g=new THREE.Group();g.position.set(0,.53,z);frame.add(g);
+ const tire=new THREE.Mesh(new THREE.TorusGeometry(.43,.11,10,20),black);
+ tire.rotation.y=Math.PI/2;g.add(tire);
+ cyl(g,.07,.07,.18,metal,0,0,0,Math.PI/2);
+ wheels.push(g);
+}
+wheel(-1.05);wheel(1.05);
+cyl(frame,.065,.065,1.6,metal,0,.86,0,Math.PI/2);
+cyl(frame,.06,.06,1.15,red,0,.95,.05,.5);
+box(frame,.5,.36,.67,red,0,1.28,.16);
+box(frame,.4,.13,.72,black,0,1.5,-.4);
+box(frame,.26,.25,.3,white,0,1.5,.54);
+cyl(frame,.045,.045,.85,metal,0,1.08,.82,.35);
+cyl(frame,.045,.045,.85,metal,0,1.08,-.78,-.35);
+cyl(frame,.05,.05,.9,black,0,1.68,.8,Math.PI/2);
+box(frame,.23,.12,.28,red,0,1.12,-.94);
+box(frame,.13,.1,.12,white,0,1.18,-1.12);
+
+// Samochody
+const cars=[];
+function makeCar(color,x,z,isPolice=false){
+ const g=new THREE.Group();scene.add(g);
+ box(g,2,.75,3.8,mat(color),0,.7,0);
+ box(g,1.55,.72,1.8,mat(0x91d3e8),0,1.38,-.1);
+ for(const x1 of [-1.03,1.03])for(const z1 of [-1.15,1.15]){
+  cyl(g,.34,.34,.18,black,x1,.4,z1,Math.PI/2);
+ }
+ if(isPolice){
+  box(g,1.5,.13,1.4,blue,0,1.32,0);
+  box(g,.55,.15,.2,red,-.3,1.8,0);
+  box(g,.55,.15,.2,blue,.3,1.8,0);
+ }
+ g.position.set(x,0,z);return g;
+}
+for(let i=0;i<20;i++){
+ const c=makeCar([0xf2f2f2,0x2559c9,0xe3b834,0x333333,0x35945a][i%5],
+  Math.floor(rand()*7-3)*40+5,-350+i*35);
+ c.userData.speed=5+rand()*9;
+ cars.push(c);
+}
+const cop=makeCar(0xececec,5,10,true);
+
+// Sterowanie
+const key={};
+let gas=false,brake=false,steer=0,doingWheelie=false;
+function bind(id,down,up){
+ const b=document.getElementById(id);
+ b.addEventListener('pointerdown',e=>{e.preventDefault();down()});
+ ['pointerup','pointercancel','pointerleave'].forEach(ev=>b.addEventListener(ev,up));
+}
+bind('gas',()=>gas=true,()=>gas=false);
+bind('brake',()=>brake=true,()=>brake=false);
+bind('left',()=>steer=-1,()=>{if(steer===-1)steer=0});
+bind('right',()=>steer=1,()=>{if(steer===1)steer=0});
+bind('wheelie',()=>doingWheelie=true,()=>doingWheelie=false);
+addEventListener('keydown',e=>{
+ key[e.key.toLowerCase()]=true;
+ if(e.key.startsWith('Arrow')||e.key===' ')e.preventDefault();
+});
+addEventListener('keyup',e=>key[e.key.toLowerCase()]=false);
+addEventListener('blur',()=>{gas=false;brake=false;steer=0;doingWheelie=false});
+
+let speed=0,heading=0;
+const clock=new THREE.Clock();
+const v=new THREE.Vector3(),look=new THREE.Vector3();
+
+function animate(){
+ requestAnimationFrame(animate);
+ const dt=Math.min(clock.getDelta(),.04);
+ const go=gas||key.w||key.arrowup;
+ const stop=brake||key.s||key.arrowdown;
+ const turn=(steer||((key.a||key.arrowleft)?-1:0)||((key.d||key.arrowright)?1:0));
+ if(go)speed+=20*dt;else speed-=2.7*dt;
+ if(stop)speed-=27*dt;
+ speed=THREE.MathUtils.clamp(speed,-8,45);
+ heading+=turn*dt*(.8+Math.abs(speed)*.035)*Math.sign(speed||1);
+ bike.position.x+=Math.sin(heading)*speed*dt;
+ bike.position.z+=Math.cos(heading)*speed*dt;
+ bike.rotation.y=heading;
+ frame.rotation.z=THREE.MathUtils.damp(frame.rotation.z,-turn*.23,5,dt);
+ const wheeling=doingWheelie||key[' '];
+ frame.rotation.x=THREE.MathUtils.damp(frame.rotation.x,wheeling?-.3:0,4,dt);
+ bike.position.y=0;
+ wheels.forEach(w=>w.rotation.x-=speed*dt*1.8);
+
+ cars.forEach(c=>{
+  c.position.z+=c.userData.speed*dt;
+  if(c.position.z>450)c.position.z=-450;
+ });
+ // Policja goni gracza
+ const dx=bike.position.x-cop.position.x;
+ const dz=bike.position.z-cop.position.z;
+ const dist=Math.hypot(dx,dz);
+ if(dist>4){
+  cop.position.x+=dx/dist*dt*Math.min(16,dist*.6);
+  cop.position.z+=dz/dist*dt*Math.min(16,dist*.6);
+  cop.rotation.y=Math.atan2(dx,dz);
+ }
+ document.getElementById('speed').textContent='Prędkość: '+Math.round(Math.abs(speed)*3.2)+' km/h';
+ document.getElementById('police').textContent='🚓 Policja: '+(dist<12?'BLISKO!':dist<35?'GONI CIĘ':'w pościgu');
+
+ // Kamera za motocyklem
+ v.set(Math.sin(heading)*-7,4.5,Math.cos(heading)*-7);
+ const target=new THREE.Vector3(bike.position.x, bike.position.y+2,bike.position.z);
+ const desired=target.clone().add(v);
+ camera.position.lerp(desired,1-Math.exp(-4*dt));
+ look.copy(target);
+ camera.lookAt(look);
+
+ renderer.render(scene,camera);
+}
+addEventListener('resize',()=>{
+ camera.aspect=innerWidth/innerHeight;
+ camera.updateProjectionMatrix();
+ renderer.setSize(innerWidth,innerHeight);
+});
+animate();
+})();
+</script>
+</body>
+</html>
